@@ -1,6 +1,7 @@
 module Main where
 import qualified Brick as B
 import qualified Data.Vector as V
+import qualified Graphics.Vty
 
 -- DATA TYPES
 
@@ -24,20 +25,32 @@ type Board = V.Vector (V.Vector Square)
 
 type Coordinate = (Int, Int)
 
+-- APP
+
+gameApp :: B.App Board e ()
+gameApp = B.App
+  { B.appDraw = renderBoard
+  , B.appChooseCursor = B.neverShowCursor
+  , B.appHandleEvent = error "TODO: event handling"
+  , B.appStartEvent =  return ()
+  , B.appAttrMap = const attrMap
+}
+
+attrMap :: B.AttrMap
+attrMap = B.attrMap Graphics.Vty.defAttr []
+
 -- UI
 
 main :: IO ()
 main = do
   board <- readMapFile "map1.gmap"
-  let up = movePlayer U board
-  case up of
-    Left () -> undefined
-    Right b -> B.simpleMain $ renderBoard b
+  _finalState <- B.defaultMain gameApp board
+  print "goodbype"
 
 -- RENDERING
 
-renderBoard :: Board -> B.Widget ()
-renderBoard = B.vBox . V.toList . V.map renderRow
+renderBoard :: Board -> [B.Widget ()]
+renderBoard = (: []) . B.vBox . V.toList . V.map renderRow
 
 renderRow :: V.Vector Square -> B.Widget ()
 renderRow = B.str . concat . V.toList . V.map show
@@ -65,7 +78,6 @@ movePlayer dir board = case getPlayerLocation board of
     D -> setPlayerLocation (x, y + 1) board
     L -> setPlayerLocation (x - 1, y) board
     R -> setPlayerLocation (x + 1, y) board
-
 
 -- PLAYER LOCATION
 

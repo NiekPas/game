@@ -73,6 +73,7 @@ executable game
     build-depends:
       base ^>=4.17.0.0,
       brick,
+      vty,
       vector
 
     -- Directories containing source files.
