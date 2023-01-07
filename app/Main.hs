@@ -12,8 +12,8 @@ data Square = Empty | VWall | HWall | Player
 
 instance Show Square where
   show Empty = " "
-  show VWall = "|"
-  show HWall = "_"
+  show VWall = "│"
+  show HWall = "─"
   show Player = "P"
 
 instance Read Square where
