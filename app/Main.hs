@@ -64,7 +64,7 @@ main :: IO ()
 main = do
   board <- readMapFile "map1.gmap"
   _finalState <- B.defaultMain gameApp board
-  print "goodbype"
+  print "goodbye"
 
 -- RENDERING
 
