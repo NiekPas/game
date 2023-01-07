@@ -7,17 +7,19 @@ import Data.Either (fromRight)
 
 -- DATA TYPES
 
-data Square = Empty | X | Player
+data Square = Empty | VWall | HWall | Player
   deriving (Eq)
 
 instance Show Square where
   show Empty = " "
-  show X = "|"
+  show VWall = "|"
+  show HWall = "_"
   show Player = "P"
 
 instance Read Square where
   readsPrec _ " " = [(Empty, "")]
-  readsPrec _ "|" = [(X, "")]
+  readsPrec _ "|" = [(VWall, "")]
+  readsPrec _ "_" = [(HWall, "")]
   readsPrec _ "P" = [(Player, "")]
   readsPrec _ _ = []
 
@@ -62,7 +64,7 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  board <- readMapFile "map3.map"
+  board <- readMapFile "map4.map"
   _finalState <- B.defaultMain gameApp board
   putStrLn "goodbye"
 
