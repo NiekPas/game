@@ -32,12 +32,12 @@ main :: IO ()
 main = B.simpleMain ui
 
 ui :: B.Widget ()
-ui = renderBoard board
+ui = renderBoard initialBoard
 
 -- GENERATION
 
-board :: Board
-board = V.fromList rows
+initialBoard :: Board
+initialBoard = V.fromList rows
 
 rows :: [V.Vector Square]
 rows = map generateRow [0..(boardSize - 1)]
