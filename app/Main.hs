@@ -1,7 +1,9 @@
 module Main where
 import qualified Brick as B
 import qualified Data.Vector as V
-import qualified Graphics.Vty
+import qualified Graphics.Vty as Vty
+import Brick (continueWithoutRedraw)
+import Data.Either (fromRight)
 
 -- DATA TYPES
 
@@ -23,21 +25,38 @@ data MovementDirection = U | D | L | R
 
 type Board = V.Vector (V.Vector Square)
 
+type AppState = Board
+
 type Coordinate = (Int, Int)
 
 -- APP
 
-gameApp :: B.App Board e ()
+gameApp :: B.App AppState e ()
 gameApp = B.App
   { B.appDraw = renderBoard
   , B.appChooseCursor = B.neverShowCursor
-  , B.appHandleEvent = error "TODO: event handling"
+  , B.appHandleEvent = handleEvent
   , B.appStartEvent =  return ()
   , B.appAttrMap = const attrMap
 }
 
+handleEvent :: B.BrickEvent () e -> B.EventM () AppState ()
+handleEvent (B.VtyEvent e) = handleVtyEvent e
+handleEvent _            = B.continueWithoutRedraw
+
+handleVtyEvent :: Vty.Event -> B.EventM n AppState ()
+handleVtyEvent (Vty.EvKey Vty.KUp _modifiers) = B.modify $ wrapMoveCursor U
+handleVtyEvent (Vty.EvKey Vty.KDown _modifiers) = B.modify $ wrapMoveCursor D
+handleVtyEvent (Vty.EvKey Vty.KLeft _modifiers) = B.modify $ wrapMoveCursor L
+handleVtyEvent (Vty.EvKey Vty.KRight _modifiers) = B.modify $ wrapMoveCursor R
+handleVtyEvent (Vty.EvKey (Vty.KChar 'q') []) = B.halt
+handleVtyEvent _ = continueWithoutRedraw
+
+wrapMoveCursor :: MovementDirection -> AppState -> AppState
+wrapMoveCursor dir board = fromRight board $ movePlayer dir board
+
 attrMap :: B.AttrMap
-attrMap = B.attrMap Graphics.Vty.defAttr []
+attrMap = B.attrMap Vty.defAttr []
 
 -- UI
 
