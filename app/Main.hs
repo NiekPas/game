@@ -62,9 +62,9 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  board <- readMapFile "map1.gmap"
+  board <- readMapFile "map2.map"
   _finalState <- B.defaultMain gameApp board
-  print "goodbye"
+  putStrLn "goodbye"
 
 -- RENDERING
 
