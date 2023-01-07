@@ -18,6 +18,8 @@ instance Read Square where
   readsPrec _ "P" = [(Player, "")]
   readsPrec _ _ = []
 
+data MovementDirection = U | D | L | R
+
 type Board = V.Vector (V.Vector Square)
 
 type Coordinate = (Int, Int)
@@ -27,9 +29,10 @@ type Coordinate = (Int, Int)
 main :: IO ()
 main = do
   board <- readMapFile "map1.gmap"
-  let c = (2, 0)
-  let newBoard = setPlayerLocation c board
-  B.simpleMain $ renderBoard newBoard
+  let up = movePlayer U board
+  case up of
+    Left () -> undefined
+    Right b -> B.simpleMain $ renderBoard b
 
 -- RENDERING
 
@@ -52,6 +55,18 @@ readRow = V.fromList . map readSquare
   where
     readSquare c = read [c] :: Square
 
+-- MOVEMENT
+
+movePlayer :: MovementDirection -> Board -> Either () Board
+movePlayer dir board = case getPlayerLocation board of
+  Nothing -> Left ()
+  Just (x, y) -> case dir of
+    U -> setPlayerLocation (x, y - 1) board
+    D -> setPlayerLocation (x, y + 1) board
+    L -> setPlayerLocation (x - 1, y) board
+    R -> setPlayerLocation (x + 1, y) board
+
+
 -- PLAYER LOCATION
 
 getPlayerLocation :: Board -> Maybe Coordinate
@@ -65,8 +80,10 @@ getPlayerLocation board = do
     getPlayerColumn y' =
       let row = board V.! y' in V.elemIndex Player row
 
-setPlayerLocation :: Coordinate -> Board -> Board
-setPlayerLocation c = setPlayer c . removePlayer
+-- |`setPlayerLocation` attempts to set the player location to the given coordinate.
+-- If the given coordinate is occupied, it returns `Left ()`.
+setPlayerLocation :: Coordinate -> Board -> Either () Board
+setPlayerLocation c board = if not $ isEmpty c board then Left () else (Right . setPlayer c . removePlayer) board
   where
     removePlayer :: Board -> Board
     removePlayer = V.map removePlayerRow
@@ -87,3 +104,14 @@ setPlayerLocation c = setPlayer c . removePlayer
 -- `contains` is a flipped version of `elem` which is arguably more readable
 contains :: Eq a => V.Vector a -> a -> Bool
 contains = flip V.elem
+
+isEmpty :: Coordinate -> Board -> Bool
+isEmpty c board = maybe False (== Empty) $ getSquare c board
+
+getSquare :: Coordinate -> Board -> Maybe Square
+getSquare = getSquare'
+  where
+    getSquare' :: Coordinate -> Board -> Maybe Square
+    getSquare' (x, y) board = do
+      row <- board V.!? y
+      row V.!? x
