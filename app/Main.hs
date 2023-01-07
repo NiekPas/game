@@ -1,7 +1,6 @@
 module Main where
 import qualified Brick as B
 import qualified Data.Vector as V
-import Data.Foldable (find)
 
 -- DATA TYPES
 
@@ -25,51 +24,10 @@ type Coordinate = (Int, Int)
 
 -- UI
 
-boardSize :: Int
-boardSize = 4
-
 main :: IO ()
-main = B.simpleMain ui
-
-ui :: B.Widget ()
-ui = renderBoard initialBoard
-
--- GENERATION
-
-initialBoard :: Board
-initialBoard = V.fromList rows
-
-rows :: [V.Vector Square]
-rows = map generateRow [0..(boardSize - 1)]
-
-generateRow :: Int -> V.Vector Square
-generateRow y = V.generate boardSize (\x -> generateSquare (x, y))
-
-generateSquare :: Coordinate -> Square
-generateSquare c = maybe Empty snd (find isCoordinate squares)
-  where
-    isCoordinate (c', _) = c' == c
-
--- `squares` maps coordinates to squares
-squares :: [((Int, Int), Square)]
-squares =
-  [ ((0, 0), X)
-  , ((1, 0), X)
-  , ((2, 0), Empty)
-  , ((3, 0), X)
-  , ((0, 1), X)
-  , ((1, 1), X)
-  , ((2, 1), Empty)
-  , ((3, 1), X)
-  , ((0, 2), X)
-  , ((1, 2), X)
-  , ((2, 2), Empty)
-  , ((3, 2), X)
-  , ((0, 3), X)
-  , ((1, 3), X)
-  , ((2, 3), Player)
-  , ((3, 3), X)
-  ]
+main = do
+  board <- readMapFile "map1.gmap"
+  B.simpleMain $ renderBoard board
 
 -- RENDERING
 
