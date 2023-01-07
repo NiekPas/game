@@ -134,10 +134,10 @@ setPlayerLocation c board = if not $ isEmpty c board then Left () else (Right . 
         removePlayerSquare Player = Empty
         removePlayerSquare x = x
     setPlayer :: Coordinate -> Board -> Board
-    setPlayer c board = board V.// [(y, row V.// [(x, Player)])]
+    setPlayer c' board' = board' V.// [(y, row V.// [(x, Player)])]
       where
-        (x, y) = c
-        row = board V.! y
+        (x, y) = c'
+        row = board' V.! y
 
 -- UTIL
 
@@ -146,7 +146,7 @@ contains :: Eq a => V.Vector a -> a -> Bool
 contains = flip V.elem
 
 isEmpty :: Coordinate -> Board -> Bool
-isEmpty c board = maybe False (== Empty) $ getSquare c board
+isEmpty c board = Just Empty == getSquare c board
 
 getSquare :: Coordinate -> Board -> Maybe Square
 getSquare = getSquare'
