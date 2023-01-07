@@ -62,7 +62,7 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  board <- readMapFile "map2.map"
+  board <- readMapFile "map3.map"
   _finalState <- B.defaultMain gameApp board
   putStrLn "goodbye"
 
@@ -80,7 +80,14 @@ readMapFile :: FilePath -> IO Board
 readMapFile = fmap readMap . readFile
 
 readMap :: String -> Board
-readMap = V.fromList . map readRow . lines
+readMap s =
+  let
+    rows :: [V.Vector Square]
+    rows = map readRow (lines s)
+    boardWidth = maximum (map V.length rows)
+    padRow :: V.Vector Square -> V.Vector Square
+    padRow row = row V.++ V.replicate (boardWidth - V.length row) Empty
+  in V.fromList (map padRow rows)
 
 readRow :: String -> V.Vector Square
 readRow = V.fromList . map readSquare
