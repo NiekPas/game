@@ -27,7 +27,9 @@ type Coordinate = (Int, Int)
 main :: IO ()
 main = do
   board <- readMapFile "map1.gmap"
-  B.simpleMain $ renderBoard board
+  let c = (2, 0)
+  let newBoard = setPlayerLocation c board
+  B.simpleMain $ renderBoard newBoard
 
 -- RENDERING
 
@@ -49,3 +51,39 @@ readRow :: String -> V.Vector Square
 readRow = V.fromList . map readSquare
   where
     readSquare c = read [c] :: Square
+
+-- PLAYER LOCATION
+
+getPlayerLocation :: Board -> Maybe Coordinate
+getPlayerLocation board = do
+  y <- getPlayerRow
+  x <- getPlayerColumn y
+  Just (x, y)
+  where
+    getPlayerRow = V.findIndex (`contains` Player) board
+    getPlayerColumn :: Int -> Maybe Int
+    getPlayerColumn y' =
+      let row = board V.! y' in V.elemIndex Player row
+
+setPlayerLocation :: Coordinate -> Board -> Board
+setPlayerLocation c = setPlayer c . removePlayer
+  where
+    removePlayer :: Board -> Board
+    removePlayer = V.map removePlayerRow
+      where
+        removePlayerRow :: V.Vector Square -> V.Vector Square
+        removePlayerRow = V.map removePlayerSquare
+        removePlayerSquare :: Square -> Square
+        removePlayerSquare Player = Empty
+        removePlayerSquare x = x
+    setPlayer :: Coordinate -> Board -> Board
+    setPlayer c board = board V.// [(y, row V.// [(x, Player)])]
+      where
+        (x, y) = c
+        row = board V.! y
+
+-- UTIL
+
+-- `contains` is a flipped version of `elem` which is arguably more readable
+contains :: Eq a => V.Vector a -> a -> Bool
+contains = flip V.elem
