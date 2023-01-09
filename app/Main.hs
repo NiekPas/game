@@ -4,10 +4,11 @@ import qualified Data.Vector as V
 import qualified Graphics.Vty as Vty
 import Brick (continueWithoutRedraw)
 import Data.Either (fromRight)
+import Data.List (find)
 
 -- DATA TYPES
 
-data Square = Empty | VWall | HWall | Player
+data Square = Empty | VWall | HWall | Player | Door Board
   deriving (Eq)
 
 instance Show Square where
@@ -15,12 +16,15 @@ instance Show Square where
   show VWall = "│"
   show HWall = "─"
   show Player = "P"
+  show (Door _) = "▣"
 
 instance Read Square where
   readsPrec _ " " = [(Empty, "")]
   readsPrec _ "|" = [(VWall, "")]
   readsPrec _ "_" = [(HWall, "")]
   readsPrec _ "P" = [(Player, "")]
+  -- TODO dynamic links
+  readsPrec _ "▣" = [(Door testBoard, "")]
   readsPrec _ _ = []
 
 data MovementDirection = U | D | L | R
@@ -64,7 +68,7 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  board <- readMapFile "map4.map"
+  board <- readMapFile "map5.map"
   _finalState <- B.defaultMain gameApp board
   putStrLn "goodbye"
 
@@ -123,8 +127,12 @@ getPlayerLocation board = do
 -- |`setPlayerLocation` attempts to set the player location to the given coordinate.
 -- If the given coordinate is occupied, it returns `Left ()`.
 setPlayerLocation :: Coordinate -> Board -> Either () Board
-setPlayerLocation c board = if not $ isEmpty c board then Left () else (Right . setPlayer c . removePlayer) board
+setPlayerLocation c board = maybe (Left ()) goToSquare (getSquare c board)
   where
+    goToSquare :: Square -> Either () Board
+    goToSquare Empty = (Right . setPlayer c . removePlayer) board
+    goToSquare (Door nextBoard) = Right nextBoard
+    goToSquare _ = Left ()
     removePlayer :: Board -> Board
     removePlayer = V.map removePlayerRow
       where
@@ -145,9 +153,6 @@ setPlayerLocation c board = if not $ isEmpty c board then Left () else (Right . 
 contains :: Eq a => V.Vector a -> a -> Bool
 contains = flip V.elem
 
-isEmpty :: Coordinate -> Board -> Bool
-isEmpty c board = Just Empty == getSquare c board
-
 getSquare :: Coordinate -> Board -> Maybe Square
 getSquare = getSquare'
   where
@@ -155,3 +160,30 @@ getSquare = getSquare'
     getSquare' (x, y) board = do
       row <- board V.!? y
       row V.!? x
+
+
+testBoard :: Board
+testBoard = V.fromList testRows
+
+testRows :: [V.Vector Square]
+testRows = map generateRow [0..(boardSize - 1)]
+
+generateRow :: Int -> V.Vector Square
+generateRow y = V.generate boardSize (\x -> generateSquare (x, y))
+
+boardSize :: Int
+boardSize = 2
+
+generateSquare :: Coordinate -> Square
+generateSquare c = maybe Empty snd (find isCoordinate squares)
+  where
+    isCoordinate (c', _) = c' == c
+
+-- `squares` maps coordinates to squares
+squares :: [((Int, Int), Square)]
+squares =
+  [ ((0, 0), VWall)
+  , ((1, 0), VWall)
+  , ((0, 1), Empty)
+  , ((1, 1), Player)
+  ]
