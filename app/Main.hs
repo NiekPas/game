@@ -21,9 +21,11 @@ instance Show Square where
 
 data MovementDirection = U | D | L | R
 
-type Room = V.Vector (V.Vector Square)
+data Item = Sword
 
-type AppState = Room
+data AppState = AppState { room :: Room, inventory :: [Item] }
+
+type Room = V.Vector (V.Vector Square)
 
 type Coordinate = (Int, Int)
 
@@ -31,7 +33,7 @@ type Coordinate = (Int, Int)
 
 gameApp :: B.App AppState e ()
 gameApp = B.App
-  { B.appDraw = renderBoard
+  { B.appDraw = renderBoard . room
   , B.appChooseCursor = B.neverShowCursor
   , B.appHandleEvent = handleEvent
   , B.appStartEvent =  return ()
@@ -51,7 +53,7 @@ handleVtyEvent (Vty.EvKey (Vty.KChar 'q') []) = B.halt
 handleVtyEvent _ = continueWithoutRedraw
 
 wrapMoveCursor :: MovementDirection -> AppState -> AppState
-wrapMoveCursor dir room = fromRight room $ movePlayer dir room
+wrapMoveCursor dir appState = appState { room = fromRight (room appState) $ movePlayer dir (room appState) }
 
 attrMap :: B.AttrMap
 attrMap = B.attrMap Vty.defAttr []
@@ -60,8 +62,8 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  room <- readMapFile "map5.map"
-  _finalState <- B.defaultMain gameApp room
+  room' <- readMapFile "map5.map"
+  _finalState <- B.defaultMain gameApp AppState {room = room', inventory = []}
   putStrLn "goodbye"
 
 -- RENDERING
@@ -92,9 +94,9 @@ parseLines (lns, doorPaths) = evalStateT (go lns) 0
     boardWidth rows = maximum (map length rows)
     go :: [String] -> StateT Int IO Room
     go [] = return V.empty
-    go room@(row : rows) = do
+    go room'@(row : rows) = do
       theseSquares <- get >>= \doorIndex -> mapM (readRoomChar doorIndex doorPaths) row
-      let theseSquares' = (V.singleton . padRow (boardWidth room) . V.fromList) theseSquares
+      let theseSquares' = (V.singleton . padRow (boardWidth room') . V.fromList) theseSquares
       nextSquares <- go rows
       return $ (V.++) theseSquares' nextSquares
 
@@ -118,34 +120,34 @@ readRoomChar doorIndex doors c = do
 -- MOVEMENT
 
 movePlayer :: MovementDirection -> Room -> Either () Room
-movePlayer dir room = case getPlayerLocation room of
+movePlayer dir room' = case getPlayerLocation room' of
   Nothing -> Left ()
   Just (x, y) -> case dir of
-    U -> setPlayerLocation (x, y - 1) room
-    D -> setPlayerLocation (x, y + 1) room
-    L -> setPlayerLocation (x - 1, y) room
-    R -> setPlayerLocation (x + 1, y) room
+    U -> setPlayerLocation (x, y - 1) room'
+    D -> setPlayerLocation (x, y + 1) room'
+    L -> setPlayerLocation (x - 1, y) room'
+    R -> setPlayerLocation (x + 1, y) room'
 
 -- PLAYER LOCATION
 
 getPlayerLocation :: Room -> Maybe Coordinate
-getPlayerLocation room = do
+getPlayerLocation room' = do
   y <- getPlayerRow
   x <- getPlayerColumn y
   Just (x, y)
   where
-    getPlayerRow = V.findIndex (`contains` Player) room
+    getPlayerRow = V.findIndex (`contains` Player) room'
     getPlayerColumn :: Int -> Maybe Int
     getPlayerColumn y' =
-      let row = room V.! y' in V.elemIndex Player row
+      let row = room' V.! y' in V.elemIndex Player row
 
 -- |`setPlayerLocation` attempts to set the player location to the given coordinate.
 -- If the given coordinate is occupied, it returns `Left ()`.
 setPlayerLocation :: Coordinate -> Room -> Either () Room
-setPlayerLocation c room = maybe (Left ()) goToSquare (getSquare c room)
+setPlayerLocation c room' = maybe (Left ()) goToSquare (getSquare c room')
   where
     goToSquare :: Square -> Either () Room
-    goToSquare Empty = (Right . setPlayer c . removePlayer) room
+    goToSquare Empty = (Right . setPlayer c . removePlayer) room'
     goToSquare (Door nextBoard) = Right nextBoard
     goToSquare _ = Left ()
     removePlayer :: Room -> Room
@@ -157,10 +159,10 @@ setPlayerLocation c room = maybe (Left ()) goToSquare (getSquare c room)
         removePlayerSquare Player = Empty
         removePlayerSquare x = x
     setPlayer :: Coordinate -> Room -> Room
-    setPlayer c' room' = room' V.// [(y, row V.// [(x, Player)])]
+    setPlayer c' room'' = room'' V.// [(y, row V.// [(x, Player)])]
       where
         (x, y) = c'
-        row = room' V.! y
+        row = room'' V.! y
 
 -- UTIL
 
@@ -172,8 +174,8 @@ getSquare :: Coordinate -> Room -> Maybe Square
 getSquare = getSquare'
   where
     getSquare' :: Coordinate -> Room -> Maybe Square
-    getSquare' (x, y) room = do
-      row <- room V.!? y
+    getSquare' (x, y) room' = do
+      row <- room' V.!? y
       row V.!? x
 
 -- | 'splitAtPredicate', applied to a predicate @p@ and a list @xs@,
