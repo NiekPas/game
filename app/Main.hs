@@ -9,7 +9,7 @@ import Control.Monad.State.Lazy (get, put, MonadIO (liftIO), StateT, evalStateT)
 
 -- DATA TYPES
 
-data Square = Empty | VWall | HWall | Player | Door Board
+data Square = Empty | VWall | HWall | Player | Door Room
   deriving (Eq)
 
 instance Show Square where
@@ -21,9 +21,9 @@ instance Show Square where
 
 data MovementDirection = U | D | L | R
 
-type Board = V.Vector (V.Vector Square)
+type Room = V.Vector (V.Vector Square)
 
-type AppState = Board
+type AppState = Room
 
 type Coordinate = (Int, Int)
 
@@ -51,7 +51,7 @@ handleVtyEvent (Vty.EvKey (Vty.KChar 'q') []) = B.halt
 handleVtyEvent _ = continueWithoutRedraw
 
 wrapMoveCursor :: MovementDirection -> AppState -> AppState
-wrapMoveCursor dir board = fromRight board $ movePlayer dir board
+wrapMoveCursor dir room = fromRight room $ movePlayer dir room
 
 attrMap :: B.AttrMap
 attrMap = B.attrMap Vty.defAttr []
@@ -60,13 +60,13 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  board <- readMapFile "map5.map"
-  _finalState <- B.defaultMain gameApp board
+  room <- readMapFile "map5.map"
+  _finalState <- B.defaultMain gameApp room
   putStrLn "goodbye"
 
 -- RENDERING
 
-renderBoard :: Board -> [B.Widget ()]
+renderBoard :: Room -> [B.Widget ()]
 renderBoard = (: []) . B.vBox . V.toList . V.map renderRow
 
 renderRow :: V.Vector Square -> B.Widget ()
@@ -75,26 +75,26 @@ renderRow = B.str . concat . V.toList . V.map show
 -- READING MAP FILES
 
 -- TODO file not found handling
-readMapFile :: FilePath -> IO Board
+readMapFile :: FilePath -> IO Room
 readMapFile s = readFile s >>= readMap
 
-readMap :: String -> IO Board
+readMap :: String -> IO Room
 readMap =
   parseLines . preprocess
   where
     preprocess = splitAtPredicate (== "---") . map (dropWhile (`elem` "1234567890: ")) . filter (/= "") . lines
 
-parseLines :: ([String], [String]) -> IO Board
+parseLines :: ([String], [String]) -> IO Room
 parseLines (lns, doorPaths) = evalStateT (go lns) 0
   where
-    -- Determine the width of the board by looking at the longest line
+    -- Determine the width of the room by looking at the longest line
     boardWidth :: [String] -> Int
     boardWidth rows = maximum (map length rows)
-    go :: [String] -> StateT Int IO Board
+    go :: [String] -> StateT Int IO Room
     go [] = return V.empty
-    go board@(row : rows) = do
+    go room@(row : rows) = do
       theseSquares <- get >>= \doorIndex -> mapM (readRoomChar doorIndex doorPaths) row
-      let theseSquares' = (V.singleton . padRow (boardWidth board) . V.fromList) theseSquares
+      let theseSquares' = (V.singleton . padRow (boardWidth room) . V.fromList) theseSquares
       nextSquares <- go rows
       return $ (V.++) theseSquares' nextSquares
 
@@ -117,38 +117,38 @@ readRoomChar doorIndex doors c = do
 
 -- MOVEMENT
 
-movePlayer :: MovementDirection -> Board -> Either () Board
-movePlayer dir board = case getPlayerLocation board of
+movePlayer :: MovementDirection -> Room -> Either () Room
+movePlayer dir room = case getPlayerLocation room of
   Nothing -> Left ()
   Just (x, y) -> case dir of
-    U -> setPlayerLocation (x, y - 1) board
-    D -> setPlayerLocation (x, y + 1) board
-    L -> setPlayerLocation (x - 1, y) board
-    R -> setPlayerLocation (x + 1, y) board
+    U -> setPlayerLocation (x, y - 1) room
+    D -> setPlayerLocation (x, y + 1) room
+    L -> setPlayerLocation (x - 1, y) room
+    R -> setPlayerLocation (x + 1, y) room
 
 -- PLAYER LOCATION
 
-getPlayerLocation :: Board -> Maybe Coordinate
-getPlayerLocation board = do
+getPlayerLocation :: Room -> Maybe Coordinate
+getPlayerLocation room = do
   y <- getPlayerRow
   x <- getPlayerColumn y
   Just (x, y)
   where
-    getPlayerRow = V.findIndex (`contains` Player) board
+    getPlayerRow = V.findIndex (`contains` Player) room
     getPlayerColumn :: Int -> Maybe Int
     getPlayerColumn y' =
-      let row = board V.! y' in V.elemIndex Player row
+      let row = room V.! y' in V.elemIndex Player row
 
 -- |`setPlayerLocation` attempts to set the player location to the given coordinate.
 -- If the given coordinate is occupied, it returns `Left ()`.
-setPlayerLocation :: Coordinate -> Board -> Either () Board
-setPlayerLocation c board = maybe (Left ()) goToSquare (getSquare c board)
+setPlayerLocation :: Coordinate -> Room -> Either () Room
+setPlayerLocation c room = maybe (Left ()) goToSquare (getSquare c room)
   where
-    goToSquare :: Square -> Either () Board
-    goToSquare Empty = (Right . setPlayer c . removePlayer) board
+    goToSquare :: Square -> Either () Room
+    goToSquare Empty = (Right . setPlayer c . removePlayer) room
     goToSquare (Door nextBoard) = Right nextBoard
     goToSquare _ = Left ()
-    removePlayer :: Board -> Board
+    removePlayer :: Room -> Room
     removePlayer = V.map removePlayerRow
       where
         removePlayerRow :: V.Vector Square -> V.Vector Square
@@ -156,11 +156,11 @@ setPlayerLocation c board = maybe (Left ()) goToSquare (getSquare c board)
         removePlayerSquare :: Square -> Square
         removePlayerSquare Player = Empty
         removePlayerSquare x = x
-    setPlayer :: Coordinate -> Board -> Board
-    setPlayer c' board' = board' V.// [(y, row V.// [(x, Player)])]
+    setPlayer :: Coordinate -> Room -> Room
+    setPlayer c' room' = room' V.// [(y, row V.// [(x, Player)])]
       where
         (x, y) = c'
-        row = board' V.! y
+        row = room' V.! y
 
 -- UTIL
 
@@ -168,12 +168,12 @@ setPlayerLocation c board = maybe (Left ()) goToSquare (getSquare c board)
 contains :: Eq a => V.Vector a -> a -> Bool
 contains = flip V.elem
 
-getSquare :: Coordinate -> Board -> Maybe Square
+getSquare :: Coordinate -> Room -> Maybe Square
 getSquare = getSquare'
   where
-    getSquare' :: Coordinate -> Board -> Maybe Square
-    getSquare' (x, y) board = do
-      row <- board V.!? y
+    getSquare' :: Coordinate -> Room -> Maybe Square
+    getSquare' (x, y) room = do
+      row <- room V.!? y
       row V.!? x
 
 -- | 'splitAtPredicate', applied to a predicate @p@ and a list @xs@,
