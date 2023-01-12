@@ -4,7 +4,8 @@ import qualified Data.Vector as V
 import qualified Graphics.Vty as Vty
 import Brick (continueWithoutRedraw)
 import Data.Either (fromRight)
-import Data.List (find)
+import Control.Monad.State.Lazy (get, put, MonadIO (liftIO), StateT, evalStateT)
+
 
 -- DATA TYPES
 
@@ -17,15 +18,6 @@ instance Show Square where
   show HWall = "─"
   show Player = "P"
   show (Door _) = "▣"
-
-instance Read Square where
-  readsPrec _ " " = [(Empty, "")]
-  readsPrec _ "|" = [(VWall, "")]
-  readsPrec _ "_" = [(HWall, "")]
-  readsPrec _ "P" = [(Player, "")]
-  -- TODO dynamic links
-  readsPrec _ "▣" = [(Door testBoard, "")]
-  readsPrec _ _ = []
 
 data MovementDirection = U | D | L | R
 
@@ -82,23 +74,46 @@ renderRow = B.str . concat . V.toList . V.map show
 
 -- READING MAP FILES
 
+-- TODO file not found handling
 readMapFile :: FilePath -> IO Board
-readMapFile = fmap readMap . readFile
+readMapFile s = readFile s >>= readMap
 
-readMap :: String -> Board
-readMap s =
-  let
-    rows :: [V.Vector Square]
-    rows = map readRow (lines s)
-    boardWidth = maximum (map V.length rows)
-    padRow :: V.Vector Square -> V.Vector Square
-    padRow row = row V.++ V.replicate (boardWidth - V.length row) Empty
-  in V.fromList (map padRow rows)
-
-readRow :: String -> V.Vector Square
-readRow = V.fromList . map readSquare
+readMap :: String -> IO Board
+readMap =
+  parseLines . preprocess
   where
-    readSquare c = read [c] :: Square
+    preprocess = splitAtPredicate (== "---") . map (dropWhile (`elem` "1234567890: ")) . filter (/= "") . lines
+
+parseLines :: ([String], [String]) -> IO Board
+parseLines (lns, doorPaths) = evalStateT (go lns) 0
+  where
+    -- Determine the width of the board by looking at the longest line
+    boardWidth :: [String] -> Int
+    boardWidth rows = maximum (map length rows)
+    go :: [String] -> StateT Int IO Board
+    go [] = return V.empty
+    go board@(row : rows) = do
+      theseSquares <- get >>= \doorIndex -> mapM (readRoomChar doorIndex doorPaths) row
+      let theseSquares' = (V.singleton . padRow (boardWidth board) . V.fromList) theseSquares
+      nextSquares <- go rows
+      return $ (V.++) theseSquares' nextSquares
+
+padRow :: Int -> V.Vector Square  -> V.Vector Square
+padRow width row = row V.++ V.replicate (width - V.length row) Empty
+
+readRoomChar :: Int -> [FilePath] -> Char -> StateT Int IO Square
+readRoomChar doorIndex doors c = do
+  case c of
+    '|' -> return VWall
+    ' ' -> return Empty
+    '_' -> return HWall
+    'P' -> return Player
+    '▣' -> do
+      -- TODO safe indexing
+      doorRoom <- liftIO $ readMapFile (doors !! doorIndex)
+      put (doorIndex + 1)
+      return (Door doorRoom)
+    _ -> error "Map parse error"
 
 -- MOVEMENT
 
@@ -161,29 +176,14 @@ getSquare = getSquare'
       row <- board V.!? y
       row V.!? x
 
-
-testBoard :: Board
-testBoard = V.fromList testRows
-
-testRows :: [V.Vector Square]
-testRows = map generateRow [0..(boardSize - 1)]
-
-generateRow :: Int -> V.Vector Square
-generateRow y = V.generate boardSize (\x -> generateSquare (x, y))
-
-boardSize :: Int
-boardSize = 2
-
-generateSquare :: Coordinate -> Square
-generateSquare c = maybe Empty snd (find isCoordinate squares)
+-- | 'splitAtPredicate', applied to a predicate @p@ and a list @xs@,
+-- splits the list at element @x@ satisfying @p@, dropping @x@.
+-- If 'p' is not statisfied, the full list and the null list are returned as a tuple.
+splitAtPredicate :: (a -> Bool) -> [a] -> ([a], [a])
+splitAtPredicate _ [] = ([], [])
+splitAtPredicate p xs = splitAtPredicateAcc p [] xs
   where
-    isCoordinate (c', _) = c' == c
-
--- `squares` maps coordinates to squares
-squares :: [((Int, Int), Square)]
-squares =
-  [ ((0, 0), VWall)
-  , ((1, 0), VWall)
-  , ((0, 1), Empty)
-  , ((1, 1), Player)
-  ]
+    splitAtPredicateAcc _ left [] = (left, [])
+    splitAtPredicateAcc p' left (x : xs')
+      | p' x = (left, xs')
+      | otherwise = splitAtPredicateAcc p' (left ++ [x]) xs'
