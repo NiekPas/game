@@ -78,20 +78,19 @@ main = do
   _finalState <- B.defaultMain gameApp AppState {room = room', inventory = []}
   putStrLn "goodbye"
 
--- TODO pin inventory bar to bottom
 ui :: AppState -> [B.Widget ()]
-ui appState = [B.vBox (renderRoom (room appState) ++ [renderInventory (inventory appState)])]
+ui appState = [renderRoom (room appState), renderInventory (inventory appState)]
 
 -- RENDERING
 
-renderRoom :: Room -> [B.Widget ()]
-renderRoom = (: []) . B.vBox . V.toList . V.map renderRow
+renderRoom :: Room -> B.Widget ()
+renderRoom = B.vBox . (: []) . B.vBox . V.toList . V.map renderRow
 
 renderRow :: V.Vector Square -> B.Widget ()
 renderRow = B.str . concat . V.toList . V.map show
 
 renderInventory :: [Item] -> B.Widget ()
-renderInventory = B.hBox . map (B.str . show)
+renderInventory = B.padTop B.Max . B.hBox . map (B.str . show)
 
 -- READING MAP FILES
 
