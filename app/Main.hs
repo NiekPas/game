@@ -3,14 +3,17 @@ import qualified Brick as B
 import qualified Data.Vector as V
 import qualified Graphics.Vty as Vty
 import Brick (continueWithoutRedraw)
-import Data.Either (fromRight)
 import Control.Monad.State.Lazy (get, put, MonadIO (liftIO), StateT, evalStateT)
-
 
 -- DATA TYPES
 
-data Square = Empty | VWall | HWall | Player | Door Room
+data Square = Empty | VWall | HWall | Player | Door Room | Pickup Item
   deriving (Eq)
+
+-- Possible results from trying to move the player to a new coordinate.
+data MoveResult = Success Room (Maybe MoveSideEffect) | Failure
+
+newtype MoveSideEffect = ItemPickedUp Item
 
 instance Show Square where
   show Empty = " "
@@ -18,10 +21,15 @@ instance Show Square where
   show HWall = "─"
   show Player = "P"
   show (Door _) = "▣"
+  show (Pickup Sword) = "🗡️"
 
 data MovementDirection = U | D | L | R
 
 data Item = Sword
+  deriving (Eq)
+
+instance Show Item where
+  show Sword = "🗡️"
 
 data AppState = AppState { room :: Room, inventory :: [Item] }
 
@@ -33,7 +41,7 @@ type Coordinate = (Int, Int)
 
 gameApp :: B.App AppState e ()
 gameApp = B.App
-  { B.appDraw = renderBoard . room
+  { B.appDraw = ui
   , B.appChooseCursor = B.neverShowCursor
   , B.appHandleEvent = handleEvent
   , B.appStartEvent =  return ()
@@ -52,8 +60,12 @@ handleVtyEvent (Vty.EvKey Vty.KRight _modifiers) = B.modify $ wrapMoveCursor R
 handleVtyEvent (Vty.EvKey (Vty.KChar 'q') []) = B.halt
 handleVtyEvent _ = continueWithoutRedraw
 
+-- TODO rename
 wrapMoveCursor :: MovementDirection -> AppState -> AppState
-wrapMoveCursor dir appState = appState { room = fromRight (room appState) $ movePlayer dir (room appState) }
+wrapMoveCursor dir appState = case movePlayerInDirection dir (room appState) of
+  Success nextRoom Nothing -> appState { room = nextRoom }
+  Success nextRoom (Just (ItemPickedUp item)) -> appState { room = nextRoom, inventory = item : inventory appState}
+  Failure -> appState
 
 attrMap :: B.AttrMap
 attrMap = B.attrMap Vty.defAttr []
@@ -62,17 +74,24 @@ attrMap = B.attrMap Vty.defAttr []
 
 main :: IO ()
 main = do
-  room' <- readMapFile "map5.map"
+  room' <- readMapFile "map7.map"
   _finalState <- B.defaultMain gameApp AppState {room = room', inventory = []}
   putStrLn "goodbye"
 
+-- TODO pin inventory bar to bottom
+ui :: AppState -> [B.Widget ()]
+ui appState = [B.vBox (renderRoom (room appState) ++ [renderInventory (inventory appState)])]
+
 -- RENDERING
 
-renderBoard :: Room -> [B.Widget ()]
-renderBoard = (: []) . B.vBox . V.toList . V.map renderRow
+renderRoom :: Room -> [B.Widget ()]
+renderRoom = (: []) . B.vBox . V.toList . V.map renderRow
 
 renderRow :: V.Vector Square -> B.Widget ()
 renderRow = B.str . concat . V.toList . V.map show
+
+renderInventory :: [Item] -> B.Widget ()
+renderInventory = B.hBox . map (B.str . show)
 
 -- READING MAP FILES
 
@@ -110,6 +129,7 @@ readRoomChar doorIndex doors c = do
     ' ' -> return Empty
     '_' -> return HWall
     'P' -> return Player
+    '🗡' -> return $ Pickup Sword
     '▣' -> do
       -- TODO safe indexing
       doorRoom <- liftIO $ readMapFile (doors !! doorIndex)
@@ -119,14 +139,16 @@ readRoomChar doorIndex doors c = do
 
 -- MOVEMENT
 
-movePlayer :: MovementDirection -> Room -> Either () Room
-movePlayer dir room' = case getPlayerLocation room' of
-  Nothing -> Left ()
-  Just (x, y) -> case dir of
-    U -> setPlayerLocation (x, y - 1) room'
-    D -> setPlayerLocation (x, y + 1) room'
-    L -> setPlayerLocation (x - 1, y) room'
-    R -> setPlayerLocation (x + 1, y) room'
+movePlayerInDirection :: MovementDirection -> Room -> MoveResult
+movePlayerInDirection dir room' = case getPlayerLocation room' of
+  Nothing -> Failure
+  Just (x, y) -> setPlayerLocation (x', y') room'
+    where
+      (x', y') = case dir of
+        U -> (x, y - 1)
+        D -> (x, y + 1)
+        L -> (x - 1, y)
+        R -> (x + 1, y)
 
 -- PLAYER LOCATION
 
@@ -142,14 +164,16 @@ getPlayerLocation room' = do
       let row = room' V.! y' in V.elemIndex Player row
 
 -- |`setPlayerLocation` attempts to set the player location to the given coordinate.
--- If the given coordinate is occupied, it returns `Left ()`.
-setPlayerLocation :: Coordinate -> Room -> Either () Room
-setPlayerLocation c room' = maybe (Left ()) goToSquare (getSquare c room')
+-- If the given coordinate has a pickup, the item is added to the inventory.
+setPlayerLocation :: Coordinate -> Room -> MoveResult
+setPlayerLocation c room' = maybe Failure goToSquare (getSquare c room')
   where
-    goToSquare :: Square -> Either () Room
-    goToSquare Empty = (Right . setPlayer c . removePlayer) room'
-    goToSquare (Door nextBoard) = Right nextBoard
-    goToSquare _ = Left ()
+    goToSquare :: Square -> MoveResult
+    goToSquare Empty            = let nextRoom = (setPlayer c . removePlayer) room' in Success nextRoom Nothing
+    goToSquare (Pickup item)    = let nextRoom = (setPlayer c . removePlayer) room' in Success nextRoom $ Just (ItemPickedUp item)
+    goToSquare (Door nextRoom)  = Success nextRoom Nothing
+    goToSquare _                = Failure
+
     removePlayer :: Room -> Room
     removePlayer = V.map removePlayerRow
       where
@@ -157,12 +181,13 @@ setPlayerLocation c room' = maybe (Left ()) goToSquare (getSquare c room')
         removePlayerRow = V.map removePlayerSquare
         removePlayerSquare :: Square -> Square
         removePlayerSquare Player = Empty
-        removePlayerSquare x = x
+        removePlayerSquare x      = x
+
     setPlayer :: Coordinate -> Room -> Room
     setPlayer c' room'' = room'' V.// [(y, row V.// [(x, Player)])]
       where
-        (x, y) = c'
-        row = room'' V.! y
+        (x, y)  = c'
+        row     = room'' V.! y
 
 -- UTIL
 
