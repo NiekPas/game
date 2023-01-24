@@ -146,12 +146,14 @@ readRoomChar doorIndex doors c = do
     'P' -> return Player
     '🗡' -> return $ Pickup Sword
     '▣' -> do
-      -- TODO safe indexing
-      doorRoom <- liftIO $ readMapFile (doors !! doorIndex)
-      put (doorIndex + 1)
-      case doorRoom of
-        Just d -> return (Door d)
+      case doors ?! doorIndex of
         Nothing -> throwM RoomParseException
+        Just path -> do
+          doorRoom <- liftIO $ readMapFile path
+          put (doorIndex + 1)
+          case doorRoom of
+            Just d -> return (Door d)
+            Nothing -> throwM RoomParseException
     _ -> throwM RoomParseException
 
 -- MOVEMENT
@@ -231,3 +233,8 @@ splitAtPredicate p xs = splitAtPredicateAcc p [] xs
     splitAtPredicateAcc p' left (x : xs')
       | p' x = (left, xs')
       | otherwise = splitAtPredicateAcc p' (left ++ [x]) xs'
+
+(?!) :: [a] -> Int -> Maybe a
+(?!) xs i
+        | (i> -1) && (length xs > i) = Just (xs!!i)
+        | otherwise = Nothing
