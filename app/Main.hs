@@ -1,9 +1,13 @@
+{-# LANGUAGE LambdaCase #-}
 module Main where
 import qualified Brick as B
 import qualified Data.Vector as V
 import qualified Graphics.Vty as Vty
 import Brick (continueWithoutRedraw)
 import Control.Monad.State.Lazy (get, put, MonadIO (liftIO), StateT, evalStateT)
+import Control.Exception (IOException, catch, Exception)
+import Data.Functor ((<&>))
+import Control.Monad.Catch (throwM)
 
 -- DATA TYPES
 
@@ -36,6 +40,10 @@ data AppState = AppState { room :: Room, inventory :: [Item] }
 type Room = V.Vector (V.Vector Square)
 
 type Coordinate = (Int, Int)
+
+data RoomParseException = RoomParseException
+  deriving (Show)
+instance Exception RoomParseException
 
 -- APP
 
@@ -75,7 +83,9 @@ attrMap = B.attrMap Vty.defAttr []
 main :: IO ()
 main = do
   room' <- readMapFile "map7.map"
-  _finalState <- B.defaultMain gameApp AppState {room = room', inventory = []}
+  _ <- case room' of
+    Nothing -> error "Can't find the map bye"
+    Just r -> B.defaultMain gameApp AppState {room = r, inventory = []}
   putStrLn "goodbye"
 
 ui :: AppState -> [B.Widget ()]
@@ -94,9 +104,15 @@ renderInventory = B.padTop B.Max . B.hBox . map (B.str . show)
 
 -- READING MAP FILES
 
--- TODO file not found handling
-readMapFile :: FilePath -> IO Room
-readMapFile s = readFile s >>= readMap
+readMapFile :: FilePath -> IO (Maybe Room)
+readMapFile s = safeReadFile s >>= \case
+  Nothing -> return Nothing
+  Just str -> (readMap str <&> Just)
+  where
+    safeReadFile :: FilePath -> IO (Maybe String)
+    safeReadFile path =
+        (Just <$> readFile path) `catch`
+        ((\_ -> pure Nothing) :: IOException -> IO (Maybe String))
 
 readMap :: String -> IO Room
 readMap =
@@ -133,8 +149,10 @@ readRoomChar doorIndex doors c = do
       -- TODO safe indexing
       doorRoom <- liftIO $ readMapFile (doors !! doorIndex)
       put (doorIndex + 1)
-      return (Door doorRoom)
-    _ -> error "Map parse error"
+      case doorRoom of
+        Just d -> return (Door d)
+        Nothing -> throwM RoomParseException
+    _ -> throwM RoomParseException
 
 -- MOVEMENT
 
